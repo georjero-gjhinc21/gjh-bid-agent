@@ -1,12 +1,7 @@
-"""BidExecutorAgent — orchestrates bid response for ITB-23-014-JW.
+"""BidExecutorAgent — orchestrates bid response for any solicitation.
 
-Implements the strategic playbook with clear workflow steps:
-1. Compliance Audit (fail-points check)
-2. Technical Proposal Enhancement
-3. Submission Assembly
-4. Pre-submission Final Check
-
-This agent owns the end-to-end bid response for a specific solicitation.
+Uses KnowledgeStore at runtime to retrieve relevant playbook, lessons, and templates.
+No hardcoded bid-specific facts in code.
 """
 from __future__ import annotations
 import json
@@ -17,97 +12,59 @@ from typing import Any
 import anthropic
 
 from agents.base import BaseAgent, Tool
+from knowledge import get_knowledge_store
 import config
 
 log = logging.getLogger(__name__)
 
+BASE_INSTRUCTIONS = """
+You are the BidExecutor — an autonomous agent that orchestrates bid responses.
 
-BID_PLAYBOOK = """
-You are the BidExecutor for ITB-23-014-JW (Miami-Dade County Public Schools Website Development).
+You do NOT have hardcoded knowledge about specific bids. Instead, you must:
+1. Retrieve relevant playbooks from the knowledge base
+2. Check for applicable lessons from past bids
+3. Use templates for standard documents
 
-## AWARD MODEL - CRITICAL CONTEXT
-This is NOT winner-takes-all. It's a PRE-APPROVED VENDOR POOL with two stages:
-1. **Stage 1** — Get into the pool. Pricing is NOT evaluated. Award to "all responsive and responsible bidders."
-   Your ONLY job is FLAWLESS COMPLIANCE.
-2. **Stage 2** — RFQs over $1,000. Pool vendors get RFQs. Lowest responsive/responsible bidder wins each task.
-   This is where you actually make money.
+Your role:
+- Plan the bid response workflow
+- Execute each step with quality
+- Self-critique after each deliverable
+- Log all decisions to memory
 
-IMPLICATION: Don't over-engineer the technical proposal trying to "beat" competitors.
-You only need to clear the responsiveness bar. Save persuasion for RFQ stage.
+## CORE PRINCIPLES
+- Never hardcode bid-specific facts — always retrieve from knowledge base
+- Every deliverable is critique-able — run CriticAgent after completion
+- Log to memory after each step for future learning
+- Check Cone of Silence before any external communication
 
-## RESPONSIVENESS CHECKLIST — THE FAIL-POINTS
-
-Check each of these BEFORE submission:
-
-1. **Attachment 1 (Cover Page)** — subcontractor field must be CONSISTENT.
-   If Ikomet Technologies is the sub, it must be declared on EVERY copy.
-
-2. **Attachment 7 (Bidder's Preference)** — California vendor with no Florida preference; mark accurately.
-
-3. **Attachment 11 (Bidder Experience)** — three references required.
-   REPLACE First Republic Bank reference — that bank FAILED and was seized by FDIC in May 2023.
-   This is a serious red flag. Replace with a live, contactable reference (K-12, higher-ed, or government).
-
-4. **Attachment 18 (Non-Foreign)** — Ikomet Technologies (India) is the declared subcontractor.
-   Confirm India isn't triggering disclosure obligations under FL Statute 287.138.
-   Verify the affidavit language is satisfied.
-
-5. **Florida foreign corp authorization** — GJH is a California S-Corp.
-   Must be registered with FL Division of Corporations (Sunbiz), not just DBE-certified.
-   These are DIFFERENT filings. File CR2E007 if missing.
-
-6. **Required documents** — verify all signed and dated within validity windows:
-   - W-9
-   - FM-3921 (Vendor App)
-   - FM-7594
-   - cr2e007 (Background Screening)
-   - Coercion Affidavit
-   - Vallejo business license
-
-7. **Performance security** — not required at bid time, but know bonding capacity may be needed for RFQs >$200K.
-
-## TECHNICAL PROPOSAL ENHANCEMENTS
-
-Make these quick wins:
-
-1. **Section 4 (Software Stack)** — "CMS (Latest Version)" is a placeholder.
-   Name Umbraco explicitly with the version number.
-
-2. **.NET 8 + Umbraco + Azure stack** — good for K-12 buyer.
-   Verify M-DCPS's current stack. If different, propose migration. If already on Umbraco, lead with continuity.
-
-3. **ADA "AA" compliance** — call out WCAG 2.1 AA explicitly (or 2.2 if claiming current).
-   "ADA AA" alone is informal language for procurement reviewers.
-
-4. **Section 8 (Project Team)** — every named team member must be a REAL, COMMITTABLE resource.
-   The team is heavy on India-based titles — make US-based account/program management presence UNAMBIGUOUS.
-   K-12 buyers care about timezone overlap and onsite availability.
-
-5. **Cybersecurity & student data privacy** — add subsection covering:
-   - FERPA compliance
-   - COPPA compliance  
-   - SOC 2 commitments
-   For K-12 site handling student-adjacent data, this is a gap.
-
-6. **References** — public-sector or K-12 references beat commercial references.
-
-## CONE OF SILENCE
-From issuance through Board agenda publication: ZERO contact with any Board member,
-Superintendent, deputy supt, their staff, or evaluation committee.
-ALL questions go through designated Procurement contact in writing only.
-Violation = disqualification and ban from future bids.
-
-## CRITICAL FLAGS
-
-1. **Due date** — verify you're generating to the CURRENT ITB version, not September 2024 one.
-   Procurement language gets revised between cycles.
-
-2. **Ikomet (India) subcontractor** — biggest political/compliance vulnerability.
-   Be ready to explain: data residency (US-only), access controls, no PII leaving US, US citizen project leadership.
-
-3. **"At any cost"** — keep it inside the lines. The fastest way to lose permanently is
-   misrepresentation on a sworn attachment. Bid forms are signed under penalty of perjury.
+## AVAILABLE TOOLS
+- retrieve_knowledge: Get relevant playbooks, lessons, templates
+- check_compliance: Audit documents against requirements
+- enhance_proposal: Improve technical sections
+- verify_responsiveness: Final check before submission
+- log_to_memory: Store decisions and learnings
 """
+
+
+def retrieve_knowledge(state, query: str, top_k: int = 5) -> str:
+    """Tool: Retrieve relevant knowledge from the knowledge base."""
+    log.info("[bid_executor] retrieving knowledge: %s", query[:100])
+    store = get_knowledge_store()
+    results = store.retrieve(query, top_k=top_k)
+    return json.dumps({
+        "query": query,
+        "results": [
+            {
+                "doc_id": r["doc_id"],
+                "title": r["title"],
+                "content": r["content"][:500] + "..." if len(r["content"]) > 500 else r["content"],
+                "tags": r["tags"],
+                "similarity": round(r["similarity"], 3)
+            }
+            for r in results
+        ],
+        "count": len(results)
+    })
 
 
 def check_compliance(state, bid_id: str, documents: list[str]) -> str:
@@ -118,10 +75,9 @@ def check_compliance(state, bid_id: str, documents: list[str]) -> str:
         "bid_id": bid_id,
         "documents_submitted": documents,
         "critical_fail_points": [
-            "Attachment 1 - subcontractor consistency",
-            "Attachment 11 - reference validity (First Republic Bank)",
-            "Attachment 18 - foreign subcontractor disclosure",
-            "FL foreign corp registration status"
+            "Verify all attachments present",
+            "Check signatures and dates",
+            "Validate reference currency"
         ],
         "timestamp": datetime.now().isoformat()
     })
@@ -149,24 +105,53 @@ def verify_responsiveness(state, bid_id: str) -> str:
     })
 
 
+def log_to_memory(state, event_type: str, content: str, tags: list[str] | None = None) -> str:
+    """Tool: Log an event or decision to memory."""
+    log.info("[bid_executor] logging to memory: %s", event_type)
+    from knowledge import get_knowledge_store
+    store = get_knowledge_store()
+    doc_id = f"memory/{event_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    store.upsert(
+        doc_id=doc_id,
+        doc_type="memory",
+        title=event_type,
+        content=content,
+        tags=tags or [event_type]
+    )
+    return json.dumps({"status": "logged", "doc_id": doc_id})
+
+
 class BidExecutorAgent(BaseAgent):
     name = "bid_executor"
-    description = "Orchestrates end-to-end bid response for a specific solicitation."
+    description = "Orchestrates end-to-end bid response using knowledge base."
     max_iterations = 20
     max_tokens = 6000
 
-    system_prompt = BID_PLAYBOOK
+    system_prompt = BASE_INSTRUCTIONS
 
     def __init__(self, client: anthropic.Anthropic, state):
         tools = [
             Tool(
+                name="retrieve_knowledge",
+                description="Retrieve relevant playbooks, lessons, or templates from knowledge base",
+                input_schema={
+                    "type": "object",
+                    "required": ["query"],
+                    "properties": {
+                        "query": {"type": "string", "description": "Search query for knowledge base"},
+                        "top_k": {"type": "integer", "description": "Number of results to return (default 5)", "default": 5},
+                    },
+                },
+                fn=retrieve_knowledge,
+            ),
+            Tool(
                 name="check_compliance",
-                description="Run compliance audit on bid documents, checking fail-points",
+                description="Run compliance audit on bid documents",
                 input_schema={
                     "type": "object",
                     "required": ["bid_id", "documents"],
                     "properties": {
-                        "bid_id": {"type": "string", "description": "The solicitation ID (e.g., ITB-23-014-JW)"},
+                        "bid_id": {"type": "string", "description": "The solicitation ID"},
                         "documents": {"type": "array", "items": {"type": "string"}, "description": "List of document paths to audit"},
                     },
                 },
@@ -179,7 +164,7 @@ class BidExecutorAgent(BaseAgent):
                     "type": "object",
                     "required": ["section", "updates"],
                     "properties": {
-                        "section": {"type": "string", "description": "Section name (e.g., 'Software Stack', 'Project Team')"},
+                        "section": {"type": "string", "description": "Section name"},
                         "updates": {"type": "object", "description": "Enhancement updates to apply"},
                     },
                 },
@@ -197,5 +182,37 @@ class BidExecutorAgent(BaseAgent):
                 },
                 fn=verify_responsiveness,
             ),
+            Tool(
+                name="log_to_memory",
+                description="Log a decision, event, or learning to memory",
+                input_schema={
+                    "type": "object",
+                    "required": ["event_type", "content"],
+                    "properties": {
+                        "event_type": {"type": "string", "description": "Type of event (e.g., 'decision', 'observation', 'lesson')"},
+                        "content": {"type": "string", "description": "What to log"},
+                        "tags": {"type": "array", "items": {"type": "string"}, "description": "Optional tags"},
+                    },
+                },
+                fn=log_to_memory,
+            ),
         ]
         super().__init__(client, state, tools=tools)
+
+    def build_input(self, task: str, context: dict | None = None) -> str:
+        """Build input by retrieving relevant knowledge first."""
+        store = get_knowledge_store()
+        
+        bid_id = context.get("bid_id", "") if context else ""
+        query = f"playbook for {bid_id}" if bid_id else "general bid response playbook"
+        
+        knowledge = store.retrieve(query, top_k=3)
+        
+        ctx = f"\n\nContext: {json.dumps(context, indent=2, default=str)}" if context else ""
+        
+        knowledge_section = "\n\n## Relevant Knowledge from Base:\n"
+        for k in knowledge:
+            knowledge_section += f"\n### {k['title']} (v{k['version']}, sim: {k['similarity']:.2f})\n"
+            knowledge_section += k['content'][:1000] + "\n"
+        
+        return f"{task}{ctx}{knowledge_section}"
