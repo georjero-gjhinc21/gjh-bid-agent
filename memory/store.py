@@ -18,8 +18,8 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-MEMORY_DIR = Path(__file__).parent / "memory"
-DB_PATH = os.environ.get("MEMORY_DB", str(Path(__file__).parent / "state" / "memory.db"))
+MEMORY_DIR = Path(__file__).parent.parent / "memory"
+DB_PATH = os.environ.get("MEMORY_DB", str(Path(__file__).parent.parent / "state" / "memory.db"))
 
 
 class MemoryStore:

@@ -89,7 +89,7 @@ class KnowledgeStore:
         
         try:
             response = client.embeddings.create(
-                model="claude-embedding-3-5-20250624",
+                model="claude-embedding-3-5-20250501",
                 input=text
             )
             return response.embedding

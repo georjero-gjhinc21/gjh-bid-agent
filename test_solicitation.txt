@@ -1,0 +1,35 @@
+ITB-23-014-JW - Miami-Dade County Public Schools Website Development
+
+SOLICITATION DETAILS:
+- Bid ID: ITB-23-014-JW
+- Buyer: Miami-Dade County Public Schools (M-DCPS)
+- Due Date: September 17, 2024
+- Description: Website Development and Maintenance Services
+
+SCOPE OF WORK:
+1. Design and develop new district website
+2. Migrate content from existing system
+3. Ensure WCAG 2.1 AA compliance (ADA)
+4. Integrate with existing systems
+5. Provide training and documentation
+
+REQUIREMENTS:
+- Attachment 1: Cover Page (must include subcontractor disclosure if applicable)
+- Attachment 7: Bidder's Preference (Florida vs out-of-state)
+- Attachment 11: Bidder Experience (minimum 3 references)
+- Attachment 18: Non-Foreign Affidavit (required if using foreign subcontractor)
+
+AWARD TYPE: Pre-approved vendor pool (non-exclusive)
+- Stage 1: Get into pool (compliance evaluated, not pricing)
+- Stage 2: RFQs over $1,000 awarded to lowest responsive bidder
+
+KEY DATES:
+- Questions Due: September 10, 2024
+- Proposals Due: September 17, 2024, 2:00 PM ET
+- Anticipated Award: October 2024
+
+SPECIAL NOTES:
+- Ikomet Technologies (India) listed as potential subcontractor
+- Must register with Florida Division of Corporations if awarded
+- No performance security required at bid time
+- Bonding capacity needed for RFQs over $200,000
