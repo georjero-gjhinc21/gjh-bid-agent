@@ -1,0 +1,55 @@
+# Goals for GJH Bid Agent System
+
+goals:
+  - id: goal_001
+    title: "Win MDCPS Website Contract"
+    description: "Win the ITB-23-014-JW vendor pool award for Miami-Dade County Public Schools website development"
+    target_date: "2024-12-31"
+    priority: high
+    status: in_progress
+    sub_goals:
+      - id: sg_001
+        title: "Get into vendor pool"
+        description: "Submit responsive bid that passes Stage 1 compliance"
+        success_criteria:
+          - "All attachments present"
+          - "All forms signed"
+          - "No disqualifying issues"
+        progress_percent: 0
+        blockers: []
+        dependencies: []
+      - id: sg_002
+        title: "Win first RFQ"
+        description: "Win first task order under the pool for revenue"
+        success_criteria:
+          - "Lowest responsive bidder on first RFQ"
+          - "Deliverable accepted"
+        progress_percent: 0
+        blockers: []
+        dependencies: ["sg_001"]
+      - id: sg_003
+        title: "Establish local presence"
+        description: "Establish Florida SBE/MBE partnership to neutralize preference penalty"
+        success_criteria:
+          - "SBE partner identified"
+          - "Joint venture formed"
+        progress_percent: 0
+        blockers: []
+        dependencies: []
+
+  - id: goal_002
+    title: "Expand to Florida K-12"
+    description: "Expand beyond MDCPS to other Florida school districts"
+    target_date: "2025-06-30"
+    priority: medium
+    status: pending
+    sub_goals: []
+
+# Template for new goals
+# - id: goal_XXX
+#   title: ""
+#   description: ""
+#   target_date: "YYYY-MM-DD"
+#   priority: high|medium|low
+#   status: pending|in_progress|completed|failed
+#   sub_goals: []

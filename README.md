@@ -1,103 +1,155 @@
-# GJH Bid Agent — Multi-Agent Framework
+# GJH Bid Agent — Autonomous Bid Response System
 
-An always-on agentic system for winning and executing public-sector bids,
-starting with M-DCPS ITB-23-014-JW.
+An always-on, self-improving agentic system for winning and executing public-sector bids.
 
-## Architecture
-
-A lead **Orchestrator** delegates to specialist agents. Each specialist is
-a real Claude reasoning loop with its own role, system prompt, and tool
-set. They share a SQLite state store and communicate via a task queue.
+## Architecture Overview
 
 ```
-                       ┌──────────────────┐
-                       │   Orchestrator   │   plans the day, routes work
-                       └────────┬─────────┘
-            ┌───────────┬───────┼───────┬────────────┬──────────┐
-            ▼           ▼       ▼       ▼            ▼          ▼
-        ┌───────┐  ┌────────┐ ┌──────┐ ┌────────┐ ┌────────┐ ┌──────────┐
-        │Scout  │  │Analyst │ │Strat-│ │Compli- │ │Drafter │ │Relation- │
-        │       │  │        │ │egist │ │ance    │ │        │ │ship      │
-        └───┬───┘  └────┬───┘ └──┬───┘ └───┬────┘ └───┬────┘ └────┬─────┘
-            │           │        │         │          │           │
-            └───────────┴────────┴─────────┴──────────┴───────────┘
-                                     │
-                              ┌──────▼──────┐
-                              │  Knowledge  │   shared retrieval
-                              │  (vector +  │
-                              │   SQLite)   │
-                              └─────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              ORCHESTRATOR                                   │
+│                   (coordinates agents, manages workflow)                    │
+└───────────────────────────────┬─────────────────────────────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+│   PLANNER     │      │   EXECUTOR    │      │    CRITIC     │
+│   Agent       │      │   Agent       │      │    Agent      │
+│ (creates      │      │ (executes     │      │ (adversarial  │
+│  workflows)   │      │  steps)       │      │  evaluation)  │
+└───────┬───────┘      └───────┬───────┘      └───────┬───────┘
+        │                       │                       │
+        └───────────────────────┴───────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+│   KNOWLEDGE   │      │    MEMORY     │      │   TELEMETRY   │
+│    Base       │      │    Store      │      │   + Guards    │
+│ (playbooks,   │      │ (episodic,    │      │ (LLM logs,    │
+│  lessons,     │      │  semantic,    │      │  cost caps,   │
+│  templates)   │      │  procedural) │      │  HITL gate)   │
+└───────────────┘      └───────────────┘      └───────────────┘
 ```
 
-| Agent        | Role                                                  | V1 status   |
-| ------------ | ----------------------------------------------------- | ----------- |
-| Orchestrator | Plans daily run, delegates, assembles digest          | full        |
-| Scout        | Discovers new opportunities (Gmail + web sources)     | full        |
-| Analyst      | Parses ITB/RFQ docs, extracts requirements & risks    | scaffold    |
-| Strategist   | Bid/no-bid recommendation, pricing posture, teaming   | scaffold    |
-| Compliance   | Watches COI, OEO reports, filings, license expiries   | partial     |
-| Drafter      | Generates response packages (cover, tech, forms)      | scaffold    |
-| Relationship | Tracks contacts, drafts outreach with cadence         | scaffold    |
-| Knowledge    | Curates and serves the firm KB to other agents        | partial     |
+## Core Agents
 
-"Scaffold" = full system prompt + role definition + tool stubs in place.
-You activate one by implementing its tools, no orchestrator changes needed.
+| Agent | Role | Status |
+|-------|------|--------|
+| **Orchestrator** | Coordinates daily runs and workflow execution | full |
+| **Planner** | Creates dynamic workflows from solicitation documents | full |
+| **BidExecutor** | Executes workflow steps using knowledge base | full |
+| **Critic** | Adversarial evaluation with retry loop (max 3) | full |
+| **Learner** | Post-mortem and proposed knowledge improvements | full |
+| **GoalAgent** | Goal decomposition and sub-goal tracking | full |
+| **Scout** | Discovers opportunities from inbox + web | full |
+| **Analyst** | Parses solicitation documents | scaffold |
+| **Strategist** | Bid/no-bid recommendations | scaffold |
+| **Compliance** | Watches expiries, filings, licenses | partial |
+| **Drafter** | Generates response packages | scaffold |
 
-## Why multi-agent and not one script
+## Key Features
 
-Each agent has narrow concerns, narrow tools, narrow context. A document
-parser does not need access to the email outbox. A compliance watchdog
-does not need a vector store. Narrow context means cheaper tokens, fewer
-hallucinations, and a clear failure surface — when a digest is wrong you
-know which agent produced the wrong output.
+### 1. Knowledge Base (No Hardcoded Facts)
+- Playbooks, lessons, and templates stored in `knowledge/`
+- Semantic search via KnowledgeStore (SQLite + embeddings)
+- Agents retrieve relevant knowledge at runtime
 
-Growth happens by adding agents (new source watchers, new buyer
-specialists like Broward or Hillsborough) without touching the orchestration
-layer. Each agent is independently testable, replaceable, and runnable.
+### 2. Dynamic Workflows (Data-Driven)
+- PlannerAgent creates workflow JSON from solicitation
+- Workflow stored as data, not hardcoded steps
+- Different solicitations get different plans
 
-## Daily run
+### 3. Self-Critique Loop
+- CriticAgent evaluates each deliverable against success criteria
+- Max 3 retries if issues found (severity >= medium)
+- Critiques saved for learning
 
-GitHub Actions cron triggers `main.py` once a day. The Orchestrator:
+### 4. Three-Tier Memory
+- **Episodic**: JSONL log per run (actions, decisions)
+- **Semantic**: Extracted facts with expiration
+- **Procedural**: Refined prompts/templates that worked
 
-1. Asks Scout to find new opportunities since last run.
-2. For each new opportunity, asks Analyst to extract requirements.
-3. Asks Strategist for a bid/no-bid call.
-4. Asks Compliance for any expiring artifacts or due filings.
-5. Asks Relationship for any follow-ups owed.
-6. Composes a digest and emails it to the CEO.
+### 5. Learning Loop
+- LearnerAgent runs post-mortem after each bid outcome
+- Proposes changes to knowledge base
+- HITL approval for accepting/rejecting changes
 
-Nothing gets submitted, nothing gets sent externally, without human
-approval. Three explicit gates: pricing, submission, outbound contact.
+### 6. Guardrails
+- **Cost ceiling**: $25/run (configurable)
+- **HITL approval**: Required for submit/sign/send/spend actions
+- **Cone of Silence**: Blocks contact with board members during solicitations
 
-## Growth roadmap
+## Usage
 
-- **V1 (now)** — Scout + Orchestrator + daily digest. Compliance flags
-  COI/license expiries from local config.
-- **V2** — Activate Analyst. When Scout flags an MDCPS RFQ, Analyst pulls
-  the doc and produces a structured brief.
-- **V3** — Activate Strategist. Bid/no-bid decisions and a draft pricing
-  posture appear in the digest.
-- **V4** — Activate Drafter. Response packages assembled automatically
-  for human review.
-- **V5** — Activate Relationship. Contact tracking + outreach drafts.
-- **V6** — Add buyer-specialist scouts (Broward, Hillsborough, Orange).
-  Each is a Scout subclass; the framework does not change.
-- **V7** — Execution agents kick in once you start winning. Project
-  intake, milestone tracking, OEO monthly reports.
+```bash
+# Daily digest run
+python main.py
+
+# Run bid workflow for specific solicitation
+python main.py --bid ITB-23-014-JW
+
+# Create workflow plan for new solicitation
+python main.py --plan ITB-25-001-AB --solicitation-file /path/to/doc.pdf
+
+# Check workflow status
+python main.py --status ITB-23-014-JW
+
+# Run post-mortem after bid outcome
+python main.py --learn --bid ITB-23-014-JW --outcome lost
+```
+
+## How to Add a New Bid
+
+1. **Add solicitation document** to working directory
+2. **Run planner** to create workflow:
+   ```
+   python main.py --plan SOLICITATION_ID --solicitation-file doc.pdf
+   ```
+3. **Execute workflow**:
+   ```
+   python main.py --bid SOLICITATION_ID
+   ```
+4. **System retrieves** relevant playbooks/lessons from knowledge base
+5. **Critic evaluates** each step, retries if needed
+6. **Learner post-mortem** after outcome
+
+## Learning Loop
+
+```
+Bid Completed → LearnerAgent Post-Mortem → Proposed Changes 
+                                              ↓
+                              Human Review (HITL)
+                              ↓           ↓
+                          Approved    Rejected
+                              ↓
+                    Update Knowledge Base
+```
+
+After N approved changes, run regression test:
+```bash
+python tests/test_integration.py
+```
 
 ## Setup
 
 ```bash
 cp .env.example .env          # fill in secrets
 pip install -r requirements.txt
-python main.py                # one-shot run
+python main.py                # test run
 ```
 
-Secrets needed:
-- `ANTHROPIC_API_KEY`
-- `GMAIL_USER` and `GMAIL_APP_PASSWORD` (Google Account → Security →
-  2-Step Verification → App passwords)
-- `DIGEST_TO` (defaults to `GMAIL_USER`)
+## Secrets
 
-Deploy via the included GitHub Actions workflow — set the same names as
-repository secrets and the cron runs daily at 11:00 UTC.
+- `ANTHROPIC_API_KEY` - Claude API
+- `GMAIL_USER` / `GMAIL_APP_PASSWORD` - for digest emails
+- `DIGEST_TO` - recipient (defaults to GMAIL_USER)
+
+## Architecture Notes
+
+- Agents use tool-use loop (not prompt engineering alone)
+- Every LLM call logged with tokens, cost, latency
+- No agent submits to external parties without HITL approval
+- Backward compatible: `python main.py --bid` still works
